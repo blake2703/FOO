@@ -3,7 +3,7 @@
 
 ### Overview
 
-This repository offers a compact collection of Python tools to help developers interact with AI agents such as OpenAI's GPT and Anthropic's Claude. The interfaces include command-line shells, GUI widgets, and file-driven workflows. All scripts are configured to operate using standard environmental variable credentials, and they support API-based, conversational, and document-processing tasks.
+This repository offers a compact collection of Python tools to help developers interact with AI agents such as OpenAI's GPT, Anthropic's Claude and multiple models via Groq. The interfaces include command-line shells, GUI widgets, and file-driven workflows. All scripts are configured to operate using standard environmental variable credentials, and they support API-based, conversational, and document-processing tasks.
 
 ### Git Protocol
 
@@ -38,8 +38,8 @@ git reset --hard HEAD
 ### Prerequisites
 
 * Python 3.x
-* An OpenAI API key loaded via `OPENAI_API_KEY`
-* An Anthropic API key loaded via `ANTHROPIC_API_KEY`
+* An OpenAI API key loaded via environment variable `OPENAI_API_KEY`
+* An Anthropic API key loaded via environment variable `ANTHROPIC_API_KEY`
 * (Optional) NLTK tokenizers: `python -c "import nltk; nltk.download('punkt')"`
 
 ### Installation
@@ -47,9 +47,9 @@ git reset --hard HEAD
 Clone the repository and run any of the scripts directly.
 
 ```bash
-git clone [your-repo-url]
+git clone https://github.com/biomathematicus/CommandLineGPT.git
 cd [your-repo]
-python [script].py
+python Helper.py
 ```
 
 ### File Descriptions
@@ -84,4 +84,4 @@ This project is open-sourced under CC-BY-SA.
 
 ### Contact
 
-For queries or suggestions, contact biomathematicus (Google it) or raise an issue in the repository.
+For queries or suggestions, contact biomathematicus (google it) or raise an issue in the repository.
