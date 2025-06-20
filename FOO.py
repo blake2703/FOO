@@ -1,3 +1,14 @@
+"""
+FOO.py
+Flaws of Others strategy  interface using multi-LLM API and assistant capabilities.
+Configuration is dynamically loaded from a JSON file with user and assistant properties.
+Includes support for file uploads and persistent threaded interactions.
+
+By Juan B. Gutiérrez, Professor of Mathematics 
+University of Texas at San Antonio.
+
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+"""
 import os
 import sys
 import json
@@ -25,6 +36,7 @@ class OpenAIWorker(QThread):
         self.thread = thread
 
     def run(self):
+        # Always use fresh copy of current history to maintain Claude context
         try:
             self.client.beta.threads.messages.create(
                 thread_id=self.thread.id,
@@ -67,7 +79,7 @@ class ClaudeWorker(QThread):
                 model=self.model,
                 max_tokens=1000,
                 temperature=0.99,
-                messages=self.history
+                messages=list(self.history)
             )
             content = response.content[0].text
             self.history.append({"role": "assistant", "content": content})
@@ -75,13 +87,16 @@ class ClaudeWorker(QThread):
         except Exception as e:
             self.result_ready.emit(f"Error: {e}")
 
+import os
+
 class AgentTab(QWidget):
-    def __init__(self, model, name, instructions, user, engine):
+    def __init__(self, model, name, instructions, user, engine, harmonizer):
         super().__init__()
         self.user = user
         self.name = name
         self.model = model
         self.engine = engine
+        self.harmonizer = harmonizer
         self.latest_response = ""
         self.active = True  # Controlled by checkbox
 
@@ -101,18 +116,34 @@ class AgentTab(QWidget):
             )
             self.thread = self.client.beta.threads.create()
         else:
+            preamble = f"Please address the user as Beloved {user}. Introduce yourself as {name}, robot extraordinaire."
+            self.instructions = preamble + instructions
             self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
             self.history = []
+            self.history.append({"role": "user", "content": self.instructions})
+
+        self.history_file = os.path.join("chats", f"{self.name}.json")
+        os.makedirs("chats", exist_ok=True)
+        if self.engine == "claude":
+            self.history_data = {"history": self.history, "seeded": True}
+        else:
+            self.history_data = {"history": [], "seeded": True}
 
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
-
+        row = QHBoxLayout()
         self.checkbox = QCheckBox(f"Enable {self.name}")
         self.checkbox.setChecked(True)
         self.checkbox.stateChanged.connect(self.toggle_active)
-        layout.addWidget(self.checkbox)
+        row.addWidget(self.checkbox)
+
+        self.harmonizer_checkbox = QCheckBox("Harmonizer")
+        self.harmonizer_checkbox.setChecked(self.harmonizer)
+        row.addWidget(self.harmonizer_checkbox)
+
+        layout.addLayout(row)
 
         self.text_area.setReadOnly(True)
         layout.addWidget(self.text_area)
@@ -120,21 +151,33 @@ class AgentTab(QWidget):
         self.user_input.setPlaceholderText("Type your message and press Enter")
         layout.addWidget(self.user_input)
 
+        self.user_input.returnPressed.connect(self.send_input)
         self.copy_button.clicked.connect(self.copy_latest_answer)
         layout.addWidget(self.copy_button)
+
+        
 
         self.setLayout(layout)
 
     def toggle_active(self, state):
         self.active = bool(state)
 
+    def send_input(self):
+        text = self.user_input.text().strip()
+        if text:
+            self.user_input.setEnabled(False)
+            self.handle_input(text)
+        self.user_input.clear()
+
     def handle_input(self, text):
+        # Save user entry only for OpenAI; Claude tracks internally
+        if self.engine == "openai":
+            self.history_data["history"].append({"role": "user", "content": text})
         if not self.active:
             return
 
         self.text_area.append(f"{self.user}: {text}")
         self.text_area.append(">>>>>>>>>>>>>>>>>>>>>>>>>>")
-        self.user_input.setEnabled(False)
 
         if self.engine == "openai":
             self.worker = OpenAIWorker(text, self.client, self.assistant, self.thread)
@@ -145,6 +188,18 @@ class AgentTab(QWidget):
         self.worker.start()
 
     def show_response(self, response):
+        # Save chat log entry only for OpenAI; Claude uses updated internal history
+        if self.engine == "openai":
+            self.history_data["history"].append({"role": "assistant", "content": response})
+        else:
+            self.history_data["history"] = self.history
+        try:
+            with open(self.history_file, "w", encoding="utf-8") as f:
+                json.dump(self.history_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Failed to write chat log: {e}")
+
+
         self.latest_response = response
         self.text_area.append(f"{self.name}: {response}")
         self.text_area.append("<<<<<<<<<<<<<<<<<<<<<<<<<<")
@@ -177,14 +232,15 @@ class MultiAgentChat(QWidget):
 
         for entry in models:
             model_code = entry["model_code"]
+            harmonizer = bool(entry.get("harmonizer", False)) if isinstance(entry.get("harmonizer", False), bool) else str(entry.get("harmonizer", "false")).lower() == "true"
             engine = "claude" if model_code.startswith("claude") else "openai"
             tab = AgentTab(
                 model=model_code,
                 name=entry["agent_name"],
                 instructions=config["instructions"],
                 user=self.user,
-                engine=engine
-            )
+                engine=engine,
+                harmonizer=harmonizer)
             self.tabs.addTab(tab, entry["agent_name"])
             self.agent_tabs.append(tab)
 
@@ -208,6 +264,26 @@ class MultiAgentChat(QWidget):
         for tab in self.agent_tabs:
             tab.handle_input(text)
         self.user_input.clear()
+
+    def focus_current_input(self, index):
+        if 0 <= index < len(self.agent_tabs):
+            self.agent_tabs[index].user_input.setFocus()
+
+    def reset_agents(self):
+        for tab in self.agent_tabs:
+            tab.text_area.clear()
+            tab.user_input.clear()
+            tab.latest_response = ""
+            if tab.engine == "claude":
+                tab.history.clear()
+                tab.history_data = {"history": tab.history, "seeded": True}
+            else:
+                tab.history_data = {"history": [], "seeded": True}
+            try:
+                with open(tab.history_file, "w", encoding="utf-8") as f:
+                    json.dump(tab.history_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Error resetting history for {tab.name}: {e}")
 
 if __name__ == "__main__":
     app = QApplication([])
