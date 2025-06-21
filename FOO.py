@@ -1,14 +1,3 @@
-"""
-FOO.py
-Flaws of Others strategy  interface using multi-LLM API and assistant capabilities.
-Configuration is dynamically loaded from a JSON file with user and assistant properties.
-Includes support for file uploads and persistent threaded interactions.
-
-By Juan B. Gutiérrez, Professor of Mathematics 
-University of Texas at San Antonio.
-
-License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
-"""
 import os
 import sys
 import json
@@ -102,6 +91,9 @@ class AgentTab(QWidget):
 
         self.text_area = QTextEdit()
         self.user_input = QLineEdit()
+        self.foo_button = QPushButton("Vulnerability")
+        self.foo_button.clicked.connect(self.send_foo_message)
+
         self.copy_button = QPushButton("Copy Latest Answer")
 
         if self.engine == "openai":
@@ -153,7 +145,16 @@ class AgentTab(QWidget):
 
         self.user_input.returnPressed.connect(self.send_input)
         self.copy_button.clicked.connect(self.copy_latest_answer)
-        layout.addWidget(self.copy_button)
+        row2 = QHBoxLayout()
+        row2.addWidget(self.copy_button)
+        row2.addWidget(self.foo_button)
+        self.judgement_button = QPushButton("Judgement")
+        self.judgement_button.clicked.connect(self.send_judgement_message)
+        self.reflection_button = QPushButton("Reflection")
+        self.reflection_button.clicked.connect(self.send_reflection_message)
+        row2.addWidget(self.judgement_button)
+        row2.addWidget(self.reflection_button)
+        layout.addLayout(row2)
 
         
 
@@ -169,7 +170,26 @@ class AgentTab(QWidget):
             self.handle_input(text)
         self.user_input.clear()
 
+    def mark_tab_pending(self):
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChat):
+            parent = parent.parent()
+        if parent:
+            index = parent.tabs.indexOf(self)
+            if index != -1:
+                parent.tabs.setTabText(index, f"⚙ {self.name}")
+
+    def clear_tab_pending(self):
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChat):
+            parent = parent.parent()
+        if parent:
+            index = parent.tabs.indexOf(self)
+            if index != -1:
+                parent.tabs.setTabText(index, self.name)
+
     def handle_input(self, text):
+        self.mark_tab_pending()
         # Save user entry only for OpenAI; Claude tracks internally
         if self.engine == "openai":
             self.history_data["history"].append({"role": "user", "content": text})
@@ -203,7 +223,70 @@ class AgentTab(QWidget):
         self.latest_response = response
         self.text_area.append(f"{self.name}: {response}")
         self.text_area.append("<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        self.clear_tab_pending()
         self.user_input.setEnabled(True)
+
+    def send_foo_message(self):
+        message = f"Agent {self.name} answered the same question as follows, find flaws: {self.latest_response}"
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChat):
+            parent = parent.parent()
+        if parent:
+            for tab in parent.agent_tabs:
+                if tab != self and tab.active:
+                    tab.handle_input(message)
+
+    def send_judgement_message(self):
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChat):
+            parent = parent.parent()
+        if not parent:
+            return
+
+        summary_map = {}
+        for tab in parent.agent_tabs:
+            if not tab.harmonizer and tab.active:
+                summary_map[tab.name] = tab.latest_response
+
+        if not summary_map:
+            return
+
+        for tab in parent.agent_tabs:
+            if tab.harmonizer and tab.active:
+                composite = []
+                for agent_name, response in summary_map.items():
+                    composite.append(f"Agent {agent_name}: {response}")
+                composite_text = "".join(composite)
+                message = (
+                    f"The following statements are the flaws others found for agent {self.name}'s response."
+                    f" Organize their responses by topic in an additive manner (that is, do not eliminate information)."
+                    f" Structure your response using the following sections: 'Agreement', 'Disagreement', and 'Unique observations'."
+                    f" In 'Agreement', list ideas supported by multiple agents. In 'Disagreement', note contradictory statements."
+                    f" In 'Unique observations', highlight observations made by only one agent.{composite_text}"
+                )
+                tab.handle_input(message)
+
+    def send_reflection_message(self):
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChat):
+            parent = parent.parent()
+        if not parent:
+            return
+
+        reflections = []
+        for tab in parent.agent_tabs:
+            if tab.harmonizer and tab.active and tab.latest_response.strip():
+                reflections.append(tab.latest_response.strip())
+
+        if not reflections:
+            return
+
+        composite = "---".join(reflections)
+        message = (
+            "Judgement of your response has resulted in the observations that follow. "
+            "Improve your response accordingly. \\n \\n " + composite
+        )
+        self.handle_input(message)
 
     def copy_latest_answer(self):
         QApplication.clipboard().setText(self.latest_response)
@@ -218,6 +301,7 @@ class MultiAgentChat(QWidget):
         models = config_data["MODELS"]
 
         self.user = config["user"]
+        self.fontsize = int(config.get("fontsize", 10))
 
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
@@ -228,6 +312,8 @@ class MultiAgentChat(QWidget):
             print("Warning: ANTHROPIC_API_KEY not set. Claude agents will not function.")
 
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(f"QTabBar::tab {{ font-size: {self.fontsize}pt; min-width: {self.fontsize * 10}px; padding: 6px; }}")
+        self.tabs.currentChanged.connect(self.focus_current_input)
         self.agent_tabs = []
 
         for entry in models:
@@ -243,6 +329,16 @@ class MultiAgentChat(QWidget):
                 harmonizer=harmonizer)
             self.tabs.addTab(tab, entry["agent_name"])
             self.agent_tabs.append(tab)
+            font = tab.text_area.font()
+            font.setPointSize(self.fontsize)
+            tab.text_area.setFont(font)
+            tab.user_input.setFont(font)
+            tab.copy_button.setFont(font)
+            tab.foo_button.setFont(font)
+            tab.judgement_button.setFont(font)
+            tab.reflection_button.setFont(font)
+            tab.checkbox.setFont(font)
+            tab.harmonizer_checkbox.setFont(font)
 
         self.user_input = QLineEdit()
         self.user_input.setPlaceholderText("Broadcast message to all active agents")
@@ -250,11 +346,15 @@ class MultiAgentChat(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(self.tabs)
-        layout.addWidget(QLabel("Message to All Active Agents:"))
+        label = QLabel("Message to All Active Agents:")
+        font = label.font()
+        font.setPointSize(self.fontsize)
+        label.setFont(font)
+        layout.addWidget(label)
         layout.addWidget(self.user_input)
         self.setLayout(layout)
 
-        self.setWindowTitle("Multi-Agent GPT + Claude Interface")
+        self.setWindowTitle("The Flaws of Others - Multi-agent Consensus")
         self.resize(700, 500)
 
     def broadcast_message(self):
