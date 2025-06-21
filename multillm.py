@@ -155,7 +155,7 @@ class ChatInterface:
             f"The original prompt was:\n{prompt}\n\n"
             f"Here are the final revised responses from each agent:\n\n" +
             "\n\n".join([f"{name}:\n{resp}" for name, resp in responses.items()]) +
-            "\n\nPlease synthesize the strongest final response using the best elements of each. Clean up the text into a single concise passage (4-6 sentences). Make sure it is written as scientifically as possible."
+            "\n\nPlease synthesize the strongest final response using the best elements of each. Clean up the text into a single concise passage (4-6 sentences). Make sure it is written as scientifically as possible. DO NOT use any adjectives of participle phrases."
         )
 
         final_model = next(iter(self.consensus_agent.clients))

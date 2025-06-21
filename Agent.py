@@ -23,7 +23,6 @@ class Agent:
         client = genai.Client(api_key=api_key or os.getenv("GEMINI_API_KEY"))
         self.clients[name] = {"client": client, "type": "gemini", "model": model}
 
-    
     def generate(self, name, prompt):
         if name not in self.clients:
             raise ValueError(f"Model '{name}' not found")
@@ -33,7 +32,7 @@ class Agent:
             response = entry["client"].chat.completions.create(
                 model=entry["model"],
                 messages=[
-                    {"role": "system", "content": 'Follow this instruction set strictly!!\n\n' + self.instruction_set},
+                    {"role": "system", "content": 'Follow this instruction set strictly!! Also make sure that you do not use adjectives or participle phrases.\n\n' + self.instruction_set},
                     {"role": "user", "content": prompt}
                 ], 
                 max_tokens=self.max_token
@@ -45,7 +44,7 @@ class Agent:
                 model=entry["model"],
                 max_tokens=self.max_token,
                 messages=[
-                    {"role": "user", "content": f"Follow this instruction set strictly!!\n\n{self.instruction_set}\n\n{prompt}"}
+                    {"role": "user", "content": f"Follow this instruction set strictly!! Also make sure that you do not use adjectives or participle phrases.\n\n{self.instruction_set}\n\n{prompt}"}
                 ]
             )
             return response.content[0].text
