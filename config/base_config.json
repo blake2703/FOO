@@ -1,0 +1,23 @@
+{
+    "CONFIG": {
+        "instructions": "Describe the purpose of the experiment and any directives for model output here.",
+        "general_directives": [
+            "Give further instruction to all agents in this list",
+            "It can be any number of instructions"            
+        ]
+    },
+    "AGENTS": [
+        {
+            "agent_model_name": "The model of the agent(i.e. gpt-4o, claude-3-opus-20240229)",
+            "agent_name": "A name for the agent",
+            "agent_description": "A simple description for the agent",
+            "temperature": "An integer that controls the randomness/creativity of the agent",
+            "max_completion_tokens": "An integer that controls how long the agents response is",
+            "harmonizer": "A boolean that determines if this agent will be the harmonizer",
+            "agent_directives": [
+                "Any futher directives that can be specialized on a per agent basis",
+                "This can be any number of directives"
+            ]
+        }
+    ]
+}
