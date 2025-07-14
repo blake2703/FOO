@@ -1,4 +1,4 @@
-## README.md for The Flaws of Others: An LLM-driven Framework for Scientific Knowledge Production
+## README.md for manuscript "*The Flaws of Others: An LLM-driven Framework for Scientific Knowledge Production*"
 
 ### Overview
 
