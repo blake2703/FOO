@@ -1,4 +1,4 @@
-## README.md for Flaws-of-Others: Multi-Agent AI Chat System
+## README.md for The Flaws of Others: An LLM-driven Framework for Scientific Knowledge Production
 
 ### Overview
 
