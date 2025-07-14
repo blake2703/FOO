@@ -4,7 +4,8 @@
         "model": "gpt-4o",
         "name": "Pepito Perez",
         "user": "Juan B. Gutierrez",
-        "fontsize": 12
+        "fontsize": 12,
+        "CWD": "C:/Dropbox/!JBGResearch/CommandLineGPT/chats/FOO_rev1"
     },
     "MODELS": [
         {
@@ -28,9 +29,8 @@
             "model_name": "OpenAI GPT 4.1",
             "temperature": 0.9,
             "max_completion_tokens": 5000,
-            "agent_name": "Gabriel",
+            "agent_name": "Gerardo",
             "harmonizer": "false"
-
         },
         {
             "model_code": "claude-opus-4-20250514",
