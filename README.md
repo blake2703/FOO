@@ -2,7 +2,7 @@
 
 ### Overview
 
-See [arXiv: 2507.06565](https://arxiv.org/abs/2507.06565)
+See  the manuscript *The Flaws of Others: An LLM-driven Framework for Scientific Knowledge Production*    [arXiv: 2507.06565](https://arxiv.org/abs/2507.06565) DOI: [10.48550/arXiv.2507.06565](https://doi.org/10.48550/arXiv.2507.06565)
 
 This repository provides a comprehensive Python framework for multi-agent AI interactions, supporting both OpenAI GPT and Anthropic Claude models. The system features a modular architecture with command-line interfaces, advanced GUI applications, and sophisticated multi-agent orchestration capabilities. All scripts use standard environment variable credentials and support conversational workflows, document processing, vulnerability analysis, and collaborative agent consensus mechanisms.
 
