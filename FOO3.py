@@ -4,7 +4,6 @@ import json
 import io
 import openai
 import anthropic
-from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QTextEdit, QLineEdit, QVBoxLayout,
     QPushButton, QTabWidget, QHBoxLayout, QCheckBox, QLabel, QScrollArea,
@@ -124,35 +123,15 @@ class ClaudeWorker(QThread):
 
     def run(self):
         try:
-            # Clean history to remove timestamps before sending to API
-            clean_history = []
-            for entry in self.history:
-                if isinstance(entry, dict) and 'role' in entry and 'content' in entry:
-                    clean_entry = {
-                        "role": entry["role"],
-                        "content": entry["content"]
-                    }
-                    clean_history.append(clean_entry)
-            
-            # Add current user input
-            clean_history.append({"role": "user", "content": self.user_input})
-            
+            self.history.append({"role": "user", "content": self.user_input})
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1000,
                 temperature=0.99,
-                messages=clean_history
+                messages=list(self.history)
             )
             content = response.content[0].text
-            
-            # Add response with timestamp to the original history
-            timestamp = datetime.now().isoformat()
-            self.history.append({
-                "role": "assistant", 
-                "content": content,
-                "timestamp": timestamp
-            })
-            
+            self.history.append({"role": "assistant", "content": content})
             self.result_ready.emit(content)
         except Exception as e:
             self.result_ready.emit(f"Error: {e}")
@@ -209,13 +188,7 @@ class AgentTab(QWidget):
             self.history_data = {"history": [], "seeded": True, "chat_id": None}
 
         self.init_ui()
-        
-        # Load latest conversation by default
-        loaded_history = self.load_latest_conversation()
-        
-        # Only introduce if no history was loaded
-        if not loaded_history and (not self.history_data.get("history") or len(self.history_data["history"]) <= 1):
-            self.handle_input("Introduce yourself.")
+        self.handle_input("Introduce yourself.")
 
     def init_ui(self):
         layout = QVBoxLayout()
@@ -277,26 +250,9 @@ class AgentTab(QWidget):
 
     def handle_input(self, text):
         self.mark_tab_pending()
-        
-        # Add timestamp to message
-        timestamp = datetime.now().isoformat()
-        message_with_timestamp = {
-            "role": "user", 
-            "content": text,
-            "timestamp": timestamp
-        }
-        
-        # Save user entry with timestamp
+        # Save user entry only for OpenAI; Claude tracks internally
         if self.engine == "openai":
-            self.history_data["history"].append(message_with_timestamp)
-        else:
-            # For Claude, add to current conversation history
-            self.history.append(message_with_timestamp)
-            
-            # Also update display_history if it exists (for restored conversations)
-            if hasattr(self, 'display_history'):
-                self.display_history.append(message_with_timestamp)
-            
+            self.history_data["history"].append({"role": "user", "content": text})
         if not self.active:
             return
 
@@ -312,30 +268,13 @@ class AgentTab(QWidget):
         self.worker.start()
 
     def show_response(self, response):
-        # Add timestamp to response
-        timestamp = datetime.now().isoformat()
-        response_with_timestamp = {
-            "role": "assistant", 
-            "content": response,
-            "timestamp": timestamp
-        }
-        
-        # Save chat log entry with timestamp
+        # Save chat log entry only for OpenAI; Claude uses updated internal history
         if self.engine == "openai":
-            self.history_data["history"].append(response_with_timestamp)
+            self.history_data["history"].append({"role": "assistant", "content": response})
             # Update OpenAI chat ID with thread ID
             self.history_data["chat_id"] = self.thread.id
         else:
-            # For Claude, add to current conversation and update history_data
-            self.history.append(response_with_timestamp)
-            
-            # Also update display_history if it exists (for restored conversations)
-            if hasattr(self, 'display_history'):
-                self.display_history.append(response_with_timestamp)
-                self.history_data["history"] = self.display_history
-            else:
-                self.history_data["history"] = self.history
-                
+            self.history_data["history"] = self.history
             # For Claude, we could generate a unique chat ID if one doesn't exist
             if not self.history_data.get("chat_id"):
                 import uuid
@@ -423,37 +362,6 @@ class AgentTab(QWidget):
         QApplication.clipboard().setText(self.latest_response)
         self.text_area.append("Latest answer copied to clipboard.")
 
-    def reset_conversation(self):
-        """Reset this agent's conversation and ask for introduction"""
-        self.text_area.clear()
-        self.user_input.clear()
-        self.latest_response = ""
-        
-        if self.engine == "claude":
-            self.history.clear()
-            # Re-add the initial system message
-            preamble = f"Please address the user as Dr. {self.user}.\n\n Introduce yourself as {self.name}, AI assistant.\n\n "
-            self.instructions = preamble + self.config.get("instructions", "")
-            self.history.append({"role": "user", "content": self.instructions})
-            self.history_data = {"history": self.history, "seeded": True, "chat_id": None}
-        else:
-            # For OpenAI, create a new thread
-            try:
-                self.thread = self.client.beta.threads.create()
-                self.history_data = {"history": [], "seeded": True, "chat_id": None}
-            except Exception as e:
-                print(f"Error creating new OpenAI thread for {self.name}: {e}")
-        
-        # Save reset state
-        try:
-            with open(self.history_file, "w", encoding="utf-8") as f:
-                json.dump(self.history_data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error saving reset state for {self.name}: {e}")
-        
-        # Ask for introduction
-        self.handle_input("Introduce yourself.")
-
     def notify_parent_agent_finished(self):
         """Notify the parent MultiAgentChat that this agent finished"""
         parent = self.parent()
@@ -461,117 +369,6 @@ class AgentTab(QWidget):
             parent = parent.parent()
         if parent and hasattr(parent, 'agent_finished'):
             parent.agent_finished()
-
-    def load_latest_conversation(self):
-        """Load the latest conversation for this agent if it exists"""
-        if os.path.exists(self.history_file):
-            try:
-                with open(self.history_file, 'r', encoding='utf-8') as f:
-                    saved_data = json.load(f)
-                
-                if isinstance(saved_data, dict) and 'history' in saved_data:
-                    history = saved_data.get('history', [])
-                    if len(history) > 1:  # More than just the initial system message
-                        print(f"Loading latest conversation for {self.name}")
-                        self.restore_conversation_from_history(saved_data)
-                        return True
-            except Exception as e:
-                print(f"Error loading latest conversation for {self.name}: {e}")
-        return False
-
-    def restore_conversation_from_history(self, saved_data):
-        """Restore conversation from saved history data"""
-        history = saved_data.get('history', [])
-        chat_id = saved_data.get('chat_id', None)
-        seeded = saved_data.get('seeded', False)
-        
-        if self.engine == "claude":
-            # For Claude, we need to store two versions: one for display (with timestamps) 
-            # and one for API calls (without timestamps)
-            self.history.clear()
-            self.display_history = []  # For showing in UI with timestamps
-            
-            for entry in history:
-                if isinstance(entry, dict) and 'role' in entry and 'content' in entry:
-                    # Store clean entry for API calls (no timestamps)
-                    clean_entry = {
-                        "role": entry["role"],
-                        "content": entry["content"]
-                    }
-                    self.history.append(clean_entry)
-                    
-                    # Store full entry for display purposes
-                    self.display_history.append(entry)
-            
-            self.history_data = {
-                "history": self.display_history,  # Save full history with timestamps
-                "seeded": seeded,
-                "chat_id": chat_id
-            }
-        else:
-            # For OpenAI, prepare to send history as context
-            self.history_data = {
-                "history": history,
-                "seeded": seeded,
-                "chat_id": chat_id,
-                "openai_thread_id": self.thread.id
-            }
-            
-            # Send conversation context to OpenAI
-            if len(history) > 1:
-                context_message = "We will continue the following conversation we started earlier:\n\n"
-                for entry in history:
-                    role = entry.get('role', 'unknown')
-                    content = entry.get('content', '')
-                    timestamp = entry.get('timestamp', '')
-                    
-                    if role == 'user':
-                        context_message += f"User ({timestamp}): {content}\n"
-                    elif role == 'assistant':
-                        context_message += f"Assistant ({timestamp}): {content}\n"
-                
-                context_message += "\nPlease continue from where we left off."
-                
-                # Send context as first message in new thread
-                try:
-                    self.client.beta.threads.messages.create(
-                        thread_id=self.thread.id,
-                        role="user",
-                        content=context_message
-                    )
-                    run = self.client.beta.threads.runs.create(
-                        thread_id=self.thread.id,
-                        assistant_id=self.assistant.id
-                    )
-                    # Note: We don't wait for this response as it's just context setting
-                except Exception as e:
-                    print(f"Error sending context to OpenAI for {self.name}: {e}")
-        
-        # Display the loaded conversation in text area
-        self.text_area.append(f"=== RESTORED CONVERSATION ===")
-        if chat_id:
-            self.text_area.append(f"Chat ID: {chat_id}")
-        
-        # Use display_history if available (for Claude with timestamps), otherwise use history
-        display_data = getattr(self, 'display_history', history)
-        
-        for entry in display_data:
-            role = entry.get('role', 'unknown')
-            content = entry.get('content', '')
-            timestamp = entry.get('timestamp', '')
-            
-            if role == 'user':
-                self.text_area.append(f"{self.user} ({timestamp}): {content}")
-                self.text_area.append(">>>>>>>>>>>>>>>>>>>>>>>>>>")
-            elif role == 'assistant':
-                self.text_area.append(f"{self.name} ({timestamp}): {content}")
-                self.text_area.append("<<<<<<<<<<<<<<<<<<<<<<<<<<")
-                self.latest_response = content  # Update latest response
-        
-        self.text_area.append(f"=== CONVERSATION RESTORED ({len(display_data)} messages) ===")
-        
-        # Clear the pending gear icon since conversation is loaded
-        self.clear_tab_pending()
 
 
 class MultiAgentChat(QWidget):
@@ -636,13 +433,7 @@ class MultiAgentChat(QWidget):
         font.setPointSize(self.fontsize)
         self.user_input.setFont(font)
 
-        # Create Load and Reset buttons
-        self.reset_button = QPushButton("Reset")
-        self.reset_button.clicked.connect(self.reset_all_agents)
-        font = self.reset_button.font()
-        font.setPointSize(self.fontsize)
-        self.reset_button.setFont(font)
-        
+        # Create Load button
         self.load_button = QPushButton("Load")
         self.load_button.clicked.connect(self.load_agent_files)
         font = self.load_button.font()
@@ -657,9 +448,8 @@ class MultiAgentChat(QWidget):
         label.setFont(font)
         layout.addWidget(label)
         
-        # Create bottom row with Reset, Load buttons and broadcast field
+        # Create bottom row with Load button and broadcast field
         bottom_layout = QHBoxLayout()
-        bottom_layout.addWidget(self.reset_button)
         bottom_layout.addWidget(self.load_button)
         bottom_layout.addWidget(self.user_input, 1)  # Give user_input more space
         layout.addLayout(bottom_layout)
@@ -714,13 +504,6 @@ class MultiAgentChat(QWidget):
             self.active_agents_working = 0  # Ensure it doesn't go negative
             self.user_input.setEnabled(True)
             print("All agents finished. Broadcast field re-enabled.")
-
-    def reset_all_agents(self):
-        """Reset all agents and ask them to introduce themselves"""
-        print("Resetting all agents...")
-        for tab in self.agent_tabs:
-            tab.reset_conversation()
-        print("All agents reset and asked to introduce themselves")
 
     def load_agent_files(self):
         """Load JSON files for each agent from a selected folder and restore chat history"""
@@ -823,10 +606,9 @@ class MultiAgentChat(QWidget):
                 # For Claude agents, restore the conversation history
                 tab.history.clear()  # Clear current history
                 
-                # Load the history from JSON, keeping separate clean and display versions
+                # Load the history from JSON
                 for entry in history:
                     if isinstance(entry, dict) and 'role' in entry and 'content' in entry:
-                        # Store full entry with timestamp for display and saving
                         tab.history.append(entry)
                 
                 # Update the history data
@@ -841,26 +623,19 @@ class MultiAgentChat(QWidget):
                 if chat_id:
                     tab.text_area.append(f"Chat ID: {chat_id}")
                 
-                # Display the conversation history with timestamps
+                # Display the conversation history
                 for entry in history:
                     role = entry.get('role', 'unknown')
                     content = entry.get('content', '')
-                    timestamp = entry.get('timestamp', '')
                     
                     if role == 'user':
-                        display_time = f" ({timestamp})" if timestamp else ""
-                        tab.text_area.append(f"{tab.user}{display_time}: {content}")
+                        tab.text_area.append(f"{tab.user}: {content}")
                         tab.text_area.append(">>>>>>>>>>>>>>>>>>>>>>>>>>")
                     elif role == 'assistant':
-                        display_time = f" ({timestamp})" if timestamp else ""
-                        tab.text_area.append(f"{tab.name}{display_time}: {content}")
+                        tab.text_area.append(f"{tab.name}: {content}")
                         tab.text_area.append("<<<<<<<<<<<<<<<<<<<<<<<<<<")
-                        tab.latest_response = content  # Update latest response
                 
                 tab.text_area.append(f"=== CHAT HISTORY LOADED ({len(history)} messages) ===")
-                
-                # Clear the pending gear icon since conversation is loaded
-                tab.clear_tab_pending()
                 
                 # Save the updated history
                 try:
@@ -873,71 +648,33 @@ class MultiAgentChat(QWidget):
                 return True
                 
             elif tab.engine == "openai":
-                # For OpenAI agents, prepare and send conversation context
-                tab.text_area.append(f"=== LOADING CHAT HISTORY: {filename} ===")
+                # For OpenAI agents, we can't directly restore thread history
+                # but we can update our local history tracking
+                tab.text_area.append(f"=== CHAT HISTORY REFERENCE: {filename} ===")
                 if chat_id:
-                    tab.text_area.append(f"Previous Thread ID: {chat_id}")
-                tab.text_area.append(f"New Thread ID: {tab.thread.id}")
-                
-                # Prepare context message for OpenAI
-                if len(history) > 1:
-                    context_message = "We will continue the following conversation we started earlier:\n\n"
-                    for entry in history:
-                        role = entry.get('role', 'unknown')
-                        content = entry.get('content', '')
-                        timestamp = entry.get('timestamp', '')
-                        
-                        if role == 'user':
-                            time_str = f" ({timestamp})" if timestamp else ""
-                            context_message += f"User{time_str}: {content}\n"
-                        elif role == 'assistant':
-                            time_str = f" ({timestamp})" if timestamp else ""
-                            context_message += f"Assistant{time_str}: {content}\n"
-                    
-                    context_message += "\nPlease continue from where we left off."
-                    
-                    # Send context to OpenAI
-                    try:
-                        tab.client.beta.threads.messages.create(
-                            thread_id=tab.thread.id,
-                            role="user",
-                            content=context_message
-                        )
-                        run = tab.client.beta.threads.runs.create(
-                            thread_id=tab.thread.id,
-                            assistant_id=tab.assistant.id
-                        )
-                        tab.text_area.append("Context sent to OpenAI. Agent will acknowledge conversation history.")
-                    except Exception as e:
-                        tab.text_area.append(f"Error sending context to OpenAI: {e}")
+                    tab.text_area.append(f"OpenAI Thread ID: {chat_id}")
+                tab.text_area.append("Note: OpenAI agents use separate thread management.")
+                tab.text_area.append("History loaded for reference but new thread created.")
                 
                 # Update local history data for tracking
                 tab.history_data = {
                     "history": history,
                     "seeded": seeded,
                     "chat_id": chat_id,
-                    "openai_thread_id": tab.thread.id
+                    "openai_thread_id": tab.thread.id  # Store current thread ID
                 }
                 
-                # Display conversation for reference with timestamps
+                # Display conversation for reference
                 for entry in history:
                     role = entry.get('role', 'unknown')
                     content = entry.get('content', '')
-                    timestamp = entry.get('timestamp', '')
                     
                     if role == 'user':
-                        time_str = f" ({timestamp})" if timestamp else ""
-                        tab.text_area.append(f"[Ref] {tab.user}{time_str}: {content}")
+                        tab.text_area.append(f"[Ref] {tab.user}: {content}")
                     elif role == 'assistant':
-                        time_str = f" ({timestamp})" if timestamp else ""
-                        tab.text_area.append(f"[Ref] {tab.name}{time_str}: {content}")
-                        tab.latest_response = content
+                        tab.text_area.append(f"[Ref] {tab.name}: {content}")
                 
                 tab.text_area.append(f"=== REFERENCE HISTORY LOADED ({len(history)} messages) ===")
-                
-                # Clear the pending gear icon since conversation is loaded
-                tab.clear_tab_pending()
-                
                 return True
                 
         except Exception as e:
