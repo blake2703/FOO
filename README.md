@@ -4,6 +4,9 @@
 
 This repository provides a comprehensive Python framework for multi-agent AI interactions, supporting both OpenAI GPT and Anthropic Claude models. The system features a modular architecture with command-line interfaces, advanced GUI applications, and sophisticated multi-agent orchestration capabilities. All scripts use standard environment variable credentials and support conversational workflows, document processing, vulnerability analysis, and collaborative agent consensus mechanisms.
 
+See [arXiv: 2507.06565](https://arxiv.org/abs/2507.06565)
+
+
 ### Git Protocol
 
 After you make your changes:
