@@ -87,7 +87,7 @@ The system is built around a modular architecture with specialized components:
 
 * **`ClaudeQA.py`**: Minimal single-query Claude testing tool.
 
-* **`GroqChat.py`**: CLI tool using LangChain and Groq's LLaMA API with memory buffers.
+* **`agentGroq.py`**: CLI tool using LangChain and Groq's LLaMA API with memory buffers.
 
 * **`generateSummaries.py`**: Batch PDF processing with TextRank summarization.
 
