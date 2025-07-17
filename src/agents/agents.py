@@ -1,38 +1,43 @@
 from abc import ABC, abstractmethod
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
 
+# Load in environment variables
+load_dotenv()
 
 class Agent(ABC):
-    
+    """
+    An abstract class for all agents
+    """
     @abstractmethod
     def generate_response(self, prompt: str) -> str:
         pass
-        
-    
-    
 
-
-class LlamaAgent(Agent):
+class KimiK2(Agent):
+    """
+    Derived class from the base of agents. Instantiates the Kimi-k2 agent
+    """
     def __init__(self, config: dict):
-       self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-       self.model_name = config['model_name']
-       self.temperature = config.get('temperature', 0.0)
-       self.max_tokens = config.get('max_completion_tokens', 0.0)
-       
-       self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-       self.model = AutoModelForCausalLM.from_pretrained(
-           self.model_name,
-           torch_dtype=torch.float32
-       ).to(self.device)
-    
-    def generate_response(self, prompt):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        with torch.no_grad():
-            output = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_tokens,
-                temperature=self.temperature,
-            )
-        return self.tokenizer.decode(output[0], skip_special_tokens=True)
-    
+        self.model = config["model_name"]
+        self.temperature = config.get('temperature', 0.6)
+        self.max_tokens = config.get('max_completion_tokens', 256)
+        self.general_instructions = config["CONFIG"].get("general_instructions", "")
+        self.general_directives = config["CONFIG"].get("general_directives", [])
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv('OPEN_ROUTER_API_KEY')
+        )
+
+    def generate_response(self, prompt: str) -> str:
+        messages = [
+            {"role": "system", "content": f"{self.general_instructions} {self.general_directives}"},
+            {"role": "user", "content": prompt}
+        ]
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens
+        )
+        return completion.choices[0].message.content.strip()    
