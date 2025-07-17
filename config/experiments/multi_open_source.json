@@ -9,27 +9,14 @@
     },
     "AGENTS": [
         {
-            "model_name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            "agent_name": "Lenny",
+            "model_name": "moonshotai/kimi-k2:free",
+            "agent_name": "Kim",
             "model_description": "Llama mini version with small temperature",
             "temperature": 0.15,
             "max_completion_tokens": 500,
             "harmonizer": "false",
             "agent_directives": [
-                "Loosen formal tone slightly while maintaining academic clarity.",
-                "Be more speculative and offer alternative hypotheses when possible."
-            ]
-        },
-        {
-            "model_name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            "agent_name": "Lamar",
-            "model_description": "Llama mini version with high temperature",
-            "temperature": 0.9,
-            "max_completion_tokens": 500,
-            "harmonizer": "false",
-            "agent_directives": [
-                "Include creative analogies and examples where helpful.",
-                "Avoid idiomatic expressions and use formal scientific tone."
+
             ]
         }
     ]
