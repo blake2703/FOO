@@ -324,3 +324,5 @@ TSWLatexianTemp*
 #*Notes.bib
 
 __pycache__
+
+.env
