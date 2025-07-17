@@ -1,0 +1,23 @@
+{
+    "CONFIG": {
+        "general_instructions": "This project intends to generate a manuscript about multi-omic integration.",
+        "general_directives": [
+            "Generate detailed answers without adjectives, unless explicitly asked for.",
+            "Avoid text with participal phrases.",
+            "When prompted with asking to write code, write all code in python with comments that explicitly explain what each line of code is doing by following PEP-8 guidelines."
+        ]
+    },
+    "AGENTS": [
+        {
+            "model_name": "moonshotai/kimi-k2:free",
+            "agent_name": "Kim",
+            "model_description": "Llama mini version with small temperature",
+            "temperature": 0.15,
+            "max_completion_tokens": 500,
+            "harmonizer": "false",
+            "agent_directives": [
+
+            ]
+        }
+    ]
+}
