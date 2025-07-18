@@ -8,7 +8,7 @@
     },
     "AGENTS": [
         {
-            "agent_model_name": "The model of the agent(i.e. gpt-4o, claude-3-opus-20240229)",
+            "model_name": "The model of the agent(i.e. gpt-4o, claude-3-opus-20240229)",
             "agent_name": "A name for the agent",
             "agent_description": "A simple description for the agent",
             "temperature": "An integer that controls the randomness/creativity of the agent",
