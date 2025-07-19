@@ -15,6 +15,7 @@ import json
 import sys
 from datetime import datetime
 from PyQt5.QtCore import QThread, pyqtSignal
+from cls_blockchain import IntegrityManager
 
 
 class OpenAIWorker(QThread):
@@ -76,7 +77,9 @@ class OpenAIAgent:
         self.latest_response = ""
         self.active = True
         self.is_busy = False  # Track if agent is currently processing
-        
+        self.integrity_issues = []
+        self.integrity_valid = True        
+
         # Build instructions with preamble (compatible with Helper.py style)
         preamble = f"Please address the user as Dr. {user}.\n\n Introduce yourself as {name}, AI assistant.\n\n "
         self.instructions = preamble + instructions
@@ -143,6 +146,8 @@ class OpenAIAgent:
         """
         Send a message to the OpenAI assistant.
         Returns the response or error message.
+        Note: The orchestrator handles ALL blockchain integrity.
+        This method should NOT add anything to history.
         """
         # Check if agent is busy
         if self.is_busy:
@@ -151,16 +156,7 @@ class OpenAIAgent:
         try:
             self.is_busy = True  # Mark as busy
             
-            # Add timestamp to message
-            timestamp = datetime.now().isoformat()
-            message_with_timestamp = {
-                "role": "user", 
-                "content": message,
-                "timestamp": timestamp
-            }
-            self.history_data["history"].append(message_with_timestamp)
-            
-            # Send message to OpenAI
+            # Send message to OpenAI (don't add to history_data)
             self.client.beta.threads.messages.create(
                 thread_id=self.thread.id,
                 role="user",
@@ -185,18 +181,8 @@ class OpenAIAgent:
                     if msg.role == "assistant":
                         response = msg.content[0].text.value
                         
-                        # Add timestamp to response and save
-                        timestamp = datetime.now().isoformat()
-                        response_with_timestamp = {
-                            "role": "assistant", 
-                            "content": response,
-                            "timestamp": timestamp
-                        }
-                        self.history_data["history"].append(response_with_timestamp)
-                        self.history_data["chat_id"] = self.thread.id
-                        
-                        # Save conversation
-                        self.save_conversation()
+                        # DO NOT add to history_data here - orchestrator handles this
+                        # Just update latest_response for copy functionality
                         self.latest_response = response
                         return response
             
@@ -206,7 +192,7 @@ class OpenAIAgent:
             return f"Error: {e}"
         finally:
             self.is_busy = False  # Always clear busy flag
-
+        
     def create_worker(self, user_input):
         """Create a worker thread for GUI use"""
         return OpenAIWorker(user_input, self.client, self.assistant, self.thread, self)
@@ -327,3 +313,17 @@ class OpenAIAgent:
             "thread_id": self.thread.id,
             "active": self.active
         }
+
+    def get_integrity_display_text(self):
+        """Get text to display integrity issues in GUI"""
+        if not hasattr(self, 'integrity_valid') or self.integrity_valid:
+            return ""
+        
+        if hasattr(self, 'integrity_issues') and self.integrity_issues:
+            warning_text = "⚠️ LOG TAMPERED. TRUST HAS BEEN BREACHED. BLOCKCHAIN FAILS\n"
+            warning_text += "Integrity Issues:\n"
+            for issue in self.integrity_issues:
+                warning_text += f"- {issue}\n"
+            return warning_text
+        
+        return "⚠️ INTEGRITY STATUS UNKNOWN"

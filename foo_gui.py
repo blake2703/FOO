@@ -442,6 +442,12 @@ class AgentTab(QWidget):
             message_count = len([e for e in display_data if e.get('role') in ['user', 'assistant']])
             self.text_area.append(f"=== CONVERSATION RESTORED ({message_count} messages) ===")
             
+            integrity_text = self.agent.get_integrity_display_text()
+            if integrity_text:
+                self.text_area.append("=" * 50)
+                self.text_area.append(integrity_text)
+                self.text_area.append("=" * 50)            
+            
         except Exception as e:
             self.text_area.append(f"Error displaying history: {e}")
             print(f"Error displaying history for {self.name}: {e}")
@@ -455,13 +461,31 @@ class AgentTab(QWidget):
         self.text_area.append(f"{self.user}: {text}")
         self.text_area.append(">>>>>>>>>>>>>>>>>>>>>>>>>>")
         
-        # Create and start worker thread
-        self.worker = AgentWorker(self.agent, text)
-        self.worker.result_ready.connect(self.show_response)
-        self.worker.start()
+        # Use orchestrator's blockchain-enabled messaging instead of direct agent call
+        parent = self.parent()
+        while parent and not isinstance(parent, MultiAgentChatGUI):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'orchestrator'):
+            # Create and start worker thread that uses orchestrator
+            self.worker = BlockchainAgentWorker(parent.orchestrator, self.agent, text)
+            self.worker.result_ready.connect(self.show_response)
+            self.worker.start()
+        else:
+            # Fallback to direct agent call
+            self.worker = AgentWorker(self.agent, text)
+            self.worker.result_ready.connect(self.show_response)
+            self.worker.start()
 
     def show_response(self, response):
         """Display agent response"""
+        # Show integrity warning if present
+        integrity_text = self.agent.get_integrity_display_text()
+        if integrity_text:
+            self.text_area.append("=" * 30)
+            self.text_area.append(integrity_text)
+            self.text_area.append("=" * 30)
+        
         self.text_area.append(f"{self.name}: {response}")
         self.text_area.append("<<<<<<<<<<<<<<<<<<<<<<<<<<")
         self.clear_tab_pending()  # Remove gear icon when finished
@@ -1092,6 +1116,23 @@ class MultiAgentChatGUI(QWidget):
         # After loading, restart interface to apply any config changes
         print("Restarting interface after load operation...")
         self.restart_interface()
+
+class BlockchainAgentWorker(QThread):
+    """Worker thread for blockchain-enabled agent interactions"""
+    result_ready = pyqtSignal(str)
+    
+    def __init__(self, orchestrator, agent, message):
+        super().__init__()
+        self.orchestrator = orchestrator
+        self.agent = agent
+        self.message = message
+    
+    def run(self):
+        try:
+            response = self.orchestrator.send_message_with_integrity(self.agent, self.message)
+            self.result_ready.emit(response)
+        except Exception as e:
+            self.result_ready.emit(f"Error: {e}")        
 
 
 if __name__ == "__main__":

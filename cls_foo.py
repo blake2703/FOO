@@ -2,6 +2,7 @@
 cls_foo.py
 Multi-Agent Orchestration class for distributing messages and managing agent interactions.
 Handles vulnerability analysis, judgment, and reflection workflows.
+Now includes blockchain integrity verification for conversation logs.
 
 By Juan B. Gutiérrez, Professor of Mathematics 
 University of Texas at San Antonio.
@@ -15,12 +16,14 @@ import sys
 from datetime import datetime
 from cls_openai import OpenAIAgent
 from cls_anthropic import AnthropicAgent
+from cls_blockchain import IntegrityManager
 
 
 class MultiAgentOrchestrator:
     """
     Orchestrates multiple AI agents (OpenAI and Anthropic) for collaborative analysis.
     Manages message distribution, vulnerability analysis, judgment, and reflection workflows.
+    Now includes blockchain integrity verification for all conversations.
     """
     
     def __init__(self, config_file="config.json"):
@@ -42,8 +45,32 @@ class MultiAgentOrchestrator:
         self.models = config_data["MODELS"]
         self.user = self.config["user"]
         
+        # Get or create blockchain salt from config
+        if "blockchain_salt" not in self.config:
+            # Generate new salt and save to config
+            import hashlib
+            import time
+            timestamp = str(time.time())
+            new_salt = hashlib.sha256(f"multi_agent_system_{timestamp}".encode()).hexdigest()[:16]
+            self.config["blockchain_salt"] = new_salt
+            
+            # Save the updated config
+            config_data["CONFIG"] = self.config
+            try:
+                with open(config_file, "w") as f:
+                    json.dump(config_data, f, indent=4)
+                print(f"Generated and saved new blockchain salt: {new_salt}")
+            except Exception as e:
+                print(f"Warning: Could not save blockchain salt to config: {e}")
+        
+        # Initialize blockchain integrity manager with global salt
+        self.integrity_manager = IntegrityManager(global_salt=self.config.get("blockchain_salt"))
+        
         # Initialize agents based on configuration
         self._initialize_agents()
+        
+        # Verify integrity of all loaded conversations
+        self._verify_all_agent_integrity()
     
     def _initialize_agents(self):
         """Initialize all agents from configuration"""
@@ -74,11 +101,75 @@ class MultiAgentOrchestrator:
                 
                 # Add harmonizer flag
                 agent.harmonizer = harmonizer
+                
+                # Initialize blockchain for this agent if conversation history exists
+                if hasattr(agent, 'history_data') and agent.history_data.get('history'):
+                    self._migrate_agent_to_blockchain(agent)
+                
                 self.agents.append(agent)
                 print(f"Initialized agent: {agent_name} ({model_code})")
                 
             except Exception as e:
                 print(f"Failed to initialize agent {agent_name}: {e}")
+    
+    def _migrate_agent_to_blockchain(self, agent):
+        """Migrate existing agent history to blockchain format if needed"""
+        try:
+            history = agent.history_data.get('history', [])
+            if not history:
+                return
+            
+            # Check if history already has blockchain data
+            has_blockchain = any('blockchain' in entry for entry in history if isinstance(entry, dict))
+            
+            if not has_blockchain:
+                print(f"Migrating {agent.name} conversation to blockchain format...")
+                
+                # Migrate history to include blockchain data
+                migrated_history = self.integrity_manager.migrate_existing_history(agent.name, history)
+                
+                # Update agent's history
+                agent.history_data['history'] = migrated_history
+                if hasattr(agent, 'display_history'):
+                    agent.display_history = migrated_history
+                
+                # Add blockchain metadata to agent's history file
+                agent.history_data['blockchain_metadata'] = self.integrity_manager.get_or_create_blockchain(agent.name).get_chain_metadata(migrated_history)
+                
+                # Save the migrated conversation
+                agent.save_conversation()
+                print(f"Successfully migrated {agent.name} to blockchain format")
+            
+        except Exception as e:
+            print(f"Error migrating {agent.name} to blockchain: {e}")
+    
+    def _verify_all_agent_integrity(self):
+        """Verify blockchain integrity for all agents on startup"""
+        print("Verifying conversation integrity for all agents...")
+        
+        for agent in self.agents:
+            try:
+                if hasattr(agent, 'history_data') and agent.history_data.get('history'):
+                    history = agent.history_data['history']
+                    is_valid, errors = self.integrity_manager.verify_agent_integrity(agent.name, history)
+                    
+                    if not is_valid:
+                        print(f"⚠️  INTEGRITY WARNING for {agent.name}:")
+                        for error in errors:
+                            print(f"   - {error}")
+                        
+                        # Mark integrity issues in agent
+                        agent.integrity_issues = errors
+                        agent.integrity_valid = False
+                    else:
+                        print(f"✅ {agent.name}: Conversation integrity verified")
+                        agent.integrity_issues = []
+                        agent.integrity_valid = True
+                        
+            except Exception as e:
+                print(f"Error verifying integrity for {agent.name}: {e}")
+                agent.integrity_issues = [f"Verification error: {e}"]
+                agent.integrity_valid = False
     
     def get_active_agents(self):
         """Get list of active agents"""
@@ -92,9 +183,59 @@ class MultiAgentOrchestrator:
         """Get list of active non-harmonizer agents"""
         return [agent for agent in self.agents if agent.active and not getattr(agent, 'harmonizer', False)]
     
+    def send_message_with_integrity(self, agent, message):
+        """
+        Send message to agent with blockchain integrity tracking.
+        This replaces direct calls to agent.send_message() in the workflow.
+        """
+        try:
+            # Get current timestamp
+            timestamp = datetime.now().isoformat()
+            
+            # Get current history
+            history = agent.history_data.get('history', [])
+            
+            # Add user message with blockchain integrity
+            user_entry = self.integrity_manager.add_message_with_integrity(
+                agent.name, "user", message, timestamp, history
+            )
+            
+            # Add to agent's history
+            history.append(user_entry)
+            agent.history_data['history'] = history
+            if hasattr(agent, 'display_history'):
+                agent.display_history = history
+            
+            # Send to agent (this will return the response)
+            response = agent.send_message(message)
+            
+            # Now add the assistant response with blockchain integrity
+            response_timestamp = datetime.now().isoformat()
+            assistant_entry = self.integrity_manager.add_message_with_integrity(
+                agent.name, "assistant", response, response_timestamp, history
+            )
+            
+            # Add assistant response to history
+            history.append(assistant_entry)
+            agent.history_data['history'] = history
+            if hasattr(agent, 'display_history'):
+                agent.display_history = history
+            
+            # Update blockchain metadata and save conversation
+            blockchain = self.integrity_manager.get_or_create_blockchain(agent.name)
+            agent.history_data['blockchain_metadata'] = blockchain.get_chain_metadata(history)
+            agent.save_conversation()
+            
+            return response
+            
+        except Exception as e:
+            print(f"Error in send_message_with_integrity for {agent.name}: {e}")
+            # Fallback to regular send_message
+            return agent.send_message(message)
+    
     def broadcast_message(self, message):
         """
-        Broadcast a message to all active agents.
+        Broadcast a message to all active agents with blockchain integrity.
         Returns a dictionary with agent names as keys and responses as values.
         """
         responses = {}
@@ -104,7 +245,7 @@ class MultiAgentOrchestrator:
         
         for agent in active_agents:
             try:
-                response = agent.send_message(message)
+                response = self.send_message_with_integrity(agent, message)
                 responses[agent.name] = response
                 print(f"Response from {agent.name}: {response[:100]}..." if len(response) > 100 else f"Response from {agent.name}: {response}")
             except Exception as e:
@@ -117,7 +258,7 @@ class MultiAgentOrchestrator:
     def send_vulnerability_analysis(self, source_agent_name):
         """
         Send vulnerability analysis request to other agents about source agent's latest response.
-        Compatible with the "Vulnerability" button functionality.
+        Now uses blockchain-verified messaging.
         """
         source_agent = None
         for agent in self.agents:
@@ -131,12 +272,12 @@ class MultiAgentOrchestrator:
         
         message = f"Agent {source_agent_name} answered the same question as follows, find flaws: {source_agent.latest_response}"
         
-        # Send to all other active agents
+        # Send to all other active agents with blockchain integrity
         responses = {}
         for agent in self.get_active_agents():
             if agent.name != source_agent_name:
                 try:
-                    response = agent.send_message(message)
+                    response = self.send_message_with_integrity(agent, message)
                     responses[agent.name] = response
                 except Exception as e:
                     responses[agent.name] = f"Error: {e}"
@@ -145,8 +286,7 @@ class MultiAgentOrchestrator:
     
     def send_judgment_analysis(self, source_agent_name):
         """
-        Send judgment analysis to harmonizer agents.
-        Collects responses from non-harmonizer agents and sends organized analysis to harmonizers.
+        Send judgment analysis to harmonizer agents with blockchain integrity.
         """
         # Collect responses from non-harmonizer agents
         summary_map = {}
@@ -158,7 +298,7 @@ class MultiAgentOrchestrator:
             print("No responses found from non-harmonizer agents")
             return {}
         
-        # Send to harmonizer agents
+        # Send to harmonizer agents with blockchain integrity
         responses = {}
         for agent in self.get_harmonizer_agents():
             composite = []
@@ -176,7 +316,7 @@ class MultiAgentOrchestrator:
             )
             
             try:
-                response = agent.send_message(message)
+                response = self.send_message_with_integrity(agent, message)
                 responses[agent.name] = response
             except Exception as e:
                 responses[agent.name] = f"Error: {e}"
@@ -185,7 +325,7 @@ class MultiAgentOrchestrator:
     
     def send_reflection_analysis(self, target_agent_name):
         """
-        Send reflection analysis to target agent based on harmonizer feedback.
+        Send reflection analysis to target agent with blockchain integrity.
         """
         target_agent = None
         for agent in self.agents:
@@ -214,20 +354,73 @@ class MultiAgentOrchestrator:
         )
         
         try:
-            response = target_agent.send_message(message)
+            response = self.send_message_with_integrity(target_agent, message)
             return response
         except Exception as e:
             return f"Error: {e}"
     
+    def get_integrity_report_for_agent(self, agent_name):
+        """Get comprehensive integrity report for a specific agent"""
+        agent = self.get_agent_by_name(agent_name)
+        if not agent:
+            return {"error": f"Agent {agent_name} not found"}
+        
+        history = agent.history_data.get('history', [])
+        return self.integrity_manager.get_integrity_report(agent_name, history)
+    
+    def get_all_integrity_reports(self):
+        """Get integrity reports for all agents"""
+        reports = {}
+        for agent in self.agents:
+            reports[agent.name] = self.get_integrity_report_for_agent(agent.name)
+        return reports
+    
+    def rebuild_agent_chain_from_index(self, agent_name, start_index):
+        """
+        Rebuild blockchain for an agent from a specific index.
+        Use this when user legitimately edits conversation history.
+        """
+        agent = self.get_agent_by_name(agent_name)
+        if not agent:
+            return False, f"Agent {agent_name} not found"
+        
+        try:
+            history = agent.history_data.get('history', [])
+            rebuilt_history = self.integrity_manager.rebuild_agent_chain(agent_name, history, start_index)
+            
+            # Update agent's history
+            agent.history_data['history'] = rebuilt_history
+            if hasattr(agent, 'display_history'):
+                agent.display_history = rebuilt_history
+            
+            # Save the rebuilt conversation
+            agent.save_conversation()
+            
+            # Update integrity status
+            agent.integrity_issues = []
+            agent.integrity_valid = True
+            
+            print(f"Successfully rebuilt blockchain for {agent_name} from index {start_index}")
+            return True, f"Blockchain rebuilt for {agent_name}"
+            
+        except Exception as e:
+            error_msg = f"Error rebuilding blockchain for {agent_name}: {e}"
+            print(error_msg)
+            return False, error_msg
+    
     def reset_all_agents(self):
-        """Reset all agents and ask them to introduce themselves"""
+        """Reset all agents and ask them to introduce themselves with blockchain integrity"""
         print("Resetting all agents...")
         responses = {}
         
         for agent in self.agents:
             try:
                 agent.reset_conversation()
-                response = agent.send_message("Introduce yourself.")
+                # Clear integrity flags
+                agent.integrity_issues = []
+                agent.integrity_valid = True
+                
+                response = self.send_message_with_integrity(agent, "Introduce yourself.")
                 responses[agent.name] = response
             except Exception as e:
                 responses[agent.name] = f"Error resetting: {e}"
@@ -237,8 +430,7 @@ class MultiAgentOrchestrator:
     
     def load_agent_files(self, folder_path):
         """
-        Load JSON files for each agent from a folder.
-        Compatible with the Load button functionality.
+        Load JSON files for each agent from a folder with integrity verification.
         """
         if not os.path.exists(folder_path):
             print(f"Folder not found: {folder_path}")
@@ -274,8 +466,34 @@ class MultiAgentOrchestrator:
                             # Fix missing timestamps and IDs before restoring
                             json_data = self._fix_missing_metadata(json_data, agent)
                             
+                            # Migrate to blockchain if needed
+                            history = json_data.get('history', [])
+                            has_blockchain = any('blockchain' in entry for entry in history if isinstance(entry, dict))
+                            
+                            if not has_blockchain:
+                                print(f"Migrating loaded history for {agent_name} to blockchain format...")
+                                migrated_history = self.integrity_manager.migrate_existing_history(agent_name, history)
+                                json_data['history'] = migrated_history
+                            else:
+                                # Restore blockchain with saved metadata to maintain salt consistency
+                                blockchain_metadata = json_data.get('blockchain_metadata', {})
+                                if 'salt' in blockchain_metadata:
+                                    self.integrity_manager.get_or_create_blockchain(agent_name, blockchain_metadata)
+                                    print(f"Restored blockchain salt for {agent_name}")
+                            
                             agent.restore_conversation_from_history(json_data)
-                            results[agent_name] = f"Chat history loaded from {filename}"
+                            
+                            # Verify integrity of loaded conversation
+                            is_valid, errors = self.integrity_manager.verify_agent_integrity(agent_name, json_data['history'])
+                            if is_valid:
+                                results[agent_name] = f"Chat history loaded from {filename} - Integrity verified ✅"
+                                agent.integrity_issues = []
+                                agent.integrity_valid = True
+                            else:
+                                results[agent_name] = f"Chat history loaded from {filename} - ⚠️ INTEGRITY ISSUES DETECTED"
+                                agent.integrity_issues = errors
+                                agent.integrity_valid = False
+                            
                             file_loaded = True
                             break
                         else:
@@ -283,7 +501,7 @@ class MultiAgentOrchestrator:
                             content = self._extract_content_from_json(json_data)
                             if content and str(content).strip():
                                 print(f"Loading JSON content from {filename} for agent {agent_name}")
-                                response = agent.send_message(str(content).strip())
+                                response = self.send_message_with_integrity(agent, str(content).strip())
                                 results[agent_name] = f"Content loaded and processed from {filename}"
                                 file_loaded = True
                                 break
@@ -365,7 +583,7 @@ class MultiAgentOrchestrator:
         return None
     
     def get_system_status(self):
-        """Get status of all agents"""
+        """Get status of all agents including integrity information"""
         status = {
             "total_agents": len(self.agents),
             "active_agents": len(self.get_active_agents()),
@@ -377,26 +595,40 @@ class MultiAgentOrchestrator:
         for agent in self.agents:
             agent_info = agent.get_info()
             agent_info["harmonizer"] = getattr(agent, 'harmonizer', False)
+            agent_info["integrity_valid"] = getattr(agent, 'integrity_valid', True)
+            agent_info["integrity_issues"] = getattr(agent, 'integrity_issues', [])
             status["agents"].append(agent_info)
         
         return status
     
     def run_command_line_interface(self):
         """
-        Run a command-line interface for the multi-agent system.
-        Compatible with Helper.py style interaction.
+        Run a command-line interface for the multi-agent system with blockchain integrity.
         """
         print("*****************   M U L T I - A G E N T   C H A T   *****************")
+        print("                    WITH BLOCKCHAIN INTEGRITY                         ")
+        
         status = self.get_system_status()
         print(f"Initialized {status['total_agents']} agents ({status['active_agents']} active)")
         
+        # Show integrity status
+        integrity_issues = sum(1 for agent_info in status["agents"] if not agent_info.get("integrity_valid", True))
+        if integrity_issues > 0:
+            print(f"⚠️  {integrity_issues} agents have integrity issues!")
+        else:
+            print("✅ All agents have verified conversation integrity")
+        
         for agent_info in status["agents"]:
-            print(f"  - {agent_info['name']}: {agent_info['model']} ({'Harmonizer' if agent_info.get('harmonizer') else 'Standard'})")
+            integrity_status = "✅" if agent_info.get("integrity_valid", True) else "⚠️"
+            print(f"  {integrity_status} {agent_info['name']}: {agent_info['model']} ({'Harmonizer' if agent_info.get('harmonizer') else 'Standard'})")
         
         print("\nCommands:")
         print("  'exit' - Exit the program")
         print("  'reset' - Reset all agents")
         print("  'status' - Show system status")
+        print("  'integrity' - Show integrity reports for all agents")
+        print("  'integrity <agent_name>' - Show integrity report for specific agent")
+        print("  'rebuild <agent_name> <index>' - Rebuild blockchain from index for agent")
         print("  'load <folder>' - Load conversations from folder")
         print("  'file:<path>' - Upload file (OpenAI agents only)")
         print("  'vuln <agent_name>' - Run vulnerability analysis")
@@ -423,7 +655,43 @@ class MultiAgentOrchestrator:
                 for agent_info in status["agents"]:
                     active_status = "Active" if agent_info["active"] else "Inactive"
                     harmonizer_status = " (Harmonizer)" if agent_info.get("harmonizer") else ""
-                    print(f"    {agent_info['name']}: {active_status}{harmonizer_status}")
+                    integrity_status = "✅" if agent_info.get("integrity_valid", True) else "⚠️"
+                    print(f"    {integrity_status} {agent_info['name']}: {active_status}{harmonizer_status}")
+            elif user_input.lower() == 'integrity':
+                reports = self.get_all_integrity_reports()
+                for agent_name, report in reports.items():
+                    print(f"\n--- {agent_name} Integrity Report ---")
+                    if report.get('integrity_valid', False):
+                        print("✅ Conversation integrity verified")
+                    else:
+                        print("⚠️ INTEGRITY ISSUES DETECTED:")
+                        for error in report.get('errors', []):
+                            print(f"   - {error}")
+            elif user_input.startswith('integrity '):
+                agent_name = user_input[10:].strip()
+                report = self.get_integrity_report_for_agent(agent_name)
+                print(f"\n--- {agent_name} Integrity Report ---")
+                if 'error' in report:
+                    print(f"Error: {report['error']}")
+                elif report.get('integrity_valid', False):
+                    print("✅ Conversation integrity verified")
+                    print(f"Total blocks: {report.get('metadata', {}).get('total_blocks', 0)}")
+                else:
+                    print("⚠️ INTEGRITY ISSUES DETECTED:")
+                    for error in report.get('errors', []):
+                        print(f"   - {error}")
+            elif user_input.startswith('rebuild '):
+                parts = user_input[8:].strip().split()
+                if len(parts) >= 2:
+                    agent_name = parts[0]
+                    try:
+                        start_index = int(parts[1])
+                        success, message = self.rebuild_agent_chain_from_index(agent_name, start_index)
+                        print(f"Rebuild result: {message}")
+                    except ValueError:
+                        print("Error: Index must be a number")
+                else:
+                    print("Usage: rebuild <agent_name> <start_index>")
             elif user_input.startswith('load '):
                 folder_path = user_input[5:].strip()
                 results = self.load_agent_files(folder_path)
@@ -458,7 +726,7 @@ class MultiAgentOrchestrator:
                 if response:
                     print(f"\n{agent_name}: {response}")
             else:
-                # Broadcast message to all active agents
+                # Broadcast message to all active agents with blockchain integrity
                 responses = self.broadcast_message(user_input)
                 print("\n<<<<<<<<<<<<<<<<<<<<<<<<<<")
                 for name, response in responses.items():
