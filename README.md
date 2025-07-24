@@ -1,11 +1,14 @@
-## README.md for manuscript "*A Mathematical Theory of Discursive Networks*"
+## FOO: The Flaws of Others 
 
 ### Overview
 
-See  the manuscript *A Mathematical Theory of Discursive Networks*    [arXiv: 2507.06565](https://arxiv.org/abs/2507.06565) DOI: [10.48550/arXiv.2507.06565](https://doi.org/10.48550/arXiv.2507.06565)
+FOO is an algorithm that minimizes false information in ensembles of Large Laguage Models (LLMs) agents.  See  the manuscript *A Mathematical Theory of Discursive Networks*    [arXiv: 2507.06565](https://arxiv.org/abs/2507.06565) DOI: [10.48550/arXiv.2507.06565](https://doi.org/10.48550/arXiv.2507.06565)
+
+The step-by-step tutorial to install the tools needed to execute the code in this repository is: [FOO_EnvSetup.pdf](FOO_EnvSetup.pdf)
+
+The easiest entry point is to run the program [foo_gui.py](foo_gui.py)
 
 This repository provides a comprehensive Python framework for multi-agent AI interactions, supporting both OpenAI GPT and Anthropic Claude models. The system features a modular architecture with command-line interfaces, advanced GUI applications, and sophisticated multi-agent orchestration capabilities. All scripts use standard environment variable credentials and support conversational workflows, document processing, vulnerability analysis, and collaborative agent consensus mechanisms.
-
 
 ### Git Protocol
 

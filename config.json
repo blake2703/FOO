@@ -5,7 +5,8 @@
         "name": "Pepito Perez",
         "user": "Juan B. Gutierrez",
         "fontsize": 12,
-        "CWD": "C:/Dropbox/!JBGResearch/CommandLineGPT/chats/FOO_rev1"
+        "CWD": "C:/Dropbox/!JBGResearch/CommandLineGPT/chats/Demo2",
+        "blockchain_salt": "c59b1ef3a98826ec"
     },
     "MODELS": [
         {

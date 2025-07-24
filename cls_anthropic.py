@@ -16,6 +16,7 @@ import sys
 import uuid
 from datetime import datetime
 from PyQt5.QtCore import QThread, pyqtSignal
+from cls_blockchain import IntegrityManager
 
 
 class ClaudeWorker(QThread):
@@ -75,7 +76,9 @@ class AnthropicAgent:
         self.config = config
         self.latest_response = ""
         self.active = True
-        
+        self.integrity_issues = []
+        self.integrity_valid = True        
+
         # Build instructions with preamble
         preamble = f"Please address the user as Dr. {user}.\n\n Introduce yourself as {name}, AI assistant.\n\n "
         self.instructions = preamble + instructions
@@ -115,22 +118,11 @@ class AnthropicAgent:
         """
         Send a message to Claude.
         Returns the response or error message.
+        Note: The orchestrator handles ALL blockchain integrity - both user and assistant messages.
+        This method should NOT add anything to history.
         """
         try:
-            # Add timestamp to message
-            timestamp = datetime.now().isoformat()
-            message_with_timestamp = {
-                "role": "user", 
-                "content": message,
-                "timestamp": timestamp
-            }
-            
-            # Add to both histories
-            self.history.append(message_with_timestamp)
-            if hasattr(self, 'display_history'):
-                self.display_history.append(message_with_timestamp)
-            
-            # Clean history for API call (remove timestamps)
+            # Get current history for API call (clean for API)
             clean_history = []
             for entry in self.history:
                 if isinstance(entry, dict) and 'role' in entry and 'content' in entry:
@@ -139,6 +131,9 @@ class AnthropicAgent:
                         "content": entry["content"]
                     }
                     clean_history.append(clean_entry)
+            
+            # Add the current user message for API call
+            clean_history.append({"role": "user", "content": message})
             
             # Send to Claude
             response = self.client.messages.create(
@@ -149,27 +144,8 @@ class AnthropicAgent:
             )
             content = response.content[0].text
             
-            # Add response with timestamp
-            timestamp = datetime.now().isoformat()
-            response_with_timestamp = {
-                "role": "assistant", 
-                "content": content,
-                "timestamp": timestamp
-            }
-            
-            self.history.append(response_with_timestamp)
-            if hasattr(self, 'display_history'):
-                self.display_history.append(response_with_timestamp)
-                self.history_data["history"] = self.display_history
-            else:
-                self.history_data["history"] = self.history
-            
-            # Generate chat ID if needed
-            if not self.history_data.get("chat_id"):
-                self.history_data["chat_id"] = str(uuid.uuid4())
-            
-            # Save conversation
-            self.save_conversation()
+            # DO NOT add anything to history here - orchestrator handles this
+            # Just update latest_response for copy functionality
             self.latest_response = content
             return content
             
@@ -293,3 +269,17 @@ class AnthropicAgent:
                 return "Error: Only PDF files are currently supported."
         except Exception as e:
             return f"Error processing file: {e}"
+        
+    def get_integrity_display_text(self):
+        """Get text to display integrity issues in GUI"""
+        if not hasattr(self, 'integrity_valid') or self.integrity_valid:
+            return ""
+        
+        if hasattr(self, 'integrity_issues') and self.integrity_issues:
+            warning_text = "⚠️ LOG TAMPERED. TRUST HAS BEEN BREACHED. BLOCKCHAIN FAILS\n"
+            warning_text += "Integrity Issues:\n"
+            for issue in self.integrity_issues:
+                warning_text += f"- {issue}\n"
+            return warning_text
+        
+        return "⚠️ INTEGRITY STATUS UNKNOWN"
