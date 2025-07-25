@@ -6,46 +6,31 @@ FOO is an algorithm that minimizes false information in ensembles of Large Lagua
 This repository provides a comprehensive Python framework for multi-agent AI interactions, supporting different types of LLMs. The system features a modular architecture with command-line interfaces, advanced GUI applications, and sophisticated multi-agent orchestration capabilities. All scripts use standard environment variable credentials and support conversational workflows, document processing, vulnerability analysis, and collaborative agent consensus mechanisms.
 
 ### Core System Architecutre
-The architecture of FOO (Flaws of Others) is organized into the following main components:
+The FOO system is structured as a modular architecture centered around agent creation, configuration, and behavior orchestration. Below is a breakdown of the main components as depicted in the flow diagram.
 
-1. Agent Layer
-    - Description of individual LLM agents and their role (e.g., responding, debating, fact-checking).
-    - Include whether these agents are homogenous or diverse in model type or configuration.
+1. AgentFactory
+    - Responsibility: instantiating new agents
 
-Coordination Module
+2. Agent
+   - Responsibility: abstract class that each agent will inherit from
 
-Responsible for managing dialogue flow, initiating tasks, and dispatching prompts.
+3. AgentConfig
+    - Responsibility: extracts the configuration of each agent
 
-May include a voting system or argumentation mechanism.
+4. AgentError
+   - Responsibility: exception class used for handling errors during agent initialization or response generation
+  
+5. ProviderManager
+   - Responsibility: manages different LLM provider settings and selects the appropriate one based on the model
 
-Knowledge and Memory System
+6. ProviderSettings:
+   - Responsibility: holds the configuration data needed to interact with a specific LLM provider
 
-Shared knowledge base across agents.
+7. Provider:
+   - Responsibility: defines enumerations for the names of supported LLM providers
 
-May include vector DB, retrieval augmentation, or long-term memory.
+8. ProviderError
+    - Responsibility: exception raised for invalid or unsupported provider configurations
 
-Evaluation/Consensus Layer
-
-Mechanism for detecting hallucinations or inconsistencies.
-
-Final decision-making process—e.g., via majority vote, confidence scoring, or agent debate.
-
-User Interface / Interaction Gateway
-
-CLI, GUI, or API through which users interact with the system.
-
-Presents outputs, allows configuration, and displays internal state.
-
-Data Input / Preprocessing
-
-Handles documents, questions, or vulnerabilities submitted by users.
-
-Parses and routes input to appropriate modules.
-
-Security and Verification
-
-(If present in your diagram) component for ensuring output robustness and detecting malicious input or agent manipulation.
-
-Logging and Monitoring
-
-Tracks conversations, decisions, and agent activity for debugging and transparency.
+9. OpenRouterAgent
+   - Responsibility: a concrete implementation of an Agent that specifically knows how to talk to OpenRouter’s API
