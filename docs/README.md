@@ -34,3 +34,5 @@ The FOO system is structured as a modular architecture centered around agent cre
 
 9. OpenRouterAgent
    - Responsibility: a concrete implementation of an Agent that specifically knows how to talk to OpenRouter’s API
+
+<img width="1372" height="1306" alt="FOO drawio" src="https://github.com/user-attachments/assets/f9470819-3869-4448-9e40-5a5999f6558c" />
