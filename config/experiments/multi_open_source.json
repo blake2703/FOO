@@ -11,8 +11,19 @@
         {
             "model_name": "moonshotai/kimi-k2:free",
             "agent_name": "Kim",
-            "agent_description": "Llama mini version with small temperature",
+            "agent_description": "kimi-k2 free version with smaller temperature",
             "temperature": 0.15,
+            "max_completion_tokens": 500,
+            "harmonizer": "false",
+            "agent_directives": [
+
+            ]
+        },
+        {
+            "model_name": "moonshotai/kimi-k2:free",
+            "agent_name": "Kim Junior",
+            "agent_description": "kimi-k2 free version with higher temperature",
+            "temperature": 0.80,
             "max_completion_tokens": 500,
             "harmonizer": "false",
             "agent_directives": [
