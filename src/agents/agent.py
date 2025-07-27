@@ -16,7 +16,7 @@ class AgentConfig:
     Args:
         model_name: LLM model to use
         agent_name: Name of the agent
-        model_description: Description of the model configuration
+        agent_description: Description of the model configuration
         general_instructions: Global instructions for all agents
         general_directives: Global directives for all agents
         temperature: Model randomness (0.0-2.0)
@@ -29,7 +29,7 @@ class AgentConfig:
     """
     model_name: str
     agent_name: str
-    model_description: str
+    agent_description: str
     general_instructions: Optional[str] = None
     general_directives: Optional[List[str]] = None
     temperature: float = 0.0
@@ -52,7 +52,7 @@ class AgentConfig:
             (self.max_completion_tokens <= 0, "max_completion_tokens must be positive"),
             (not self.model_name.strip(), "model_name cannot be empty"),
             (not self.agent_name.strip(), "agent_name cannot be empty"),
-            (not self.model_description.strip(), "model_description cannot be empty")
+            (not self.agent_description.strip(), "agent_description cannot be empty")
         ]
         
         for condition, message in validations:
