@@ -18,17 +18,6 @@
             "agent_directives": [
 
             ]
-        },
-        {
-            "model_name": "moonshotai/kimi-k2:free",
-            "agent_name": "Kim Junior",
-            "agent_description": "kimi-k2 free version with higher temperature",
-            "temperature": 0.80,
-            "max_completion_tokens": 500,
-            "harmonizer": "false",
-            "agent_directives": [
-
-            ]
         }
     ]
 }
