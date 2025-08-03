@@ -61,15 +61,30 @@ class DatabaseLogHandler(LogHandler):
     """Outputs logs to a database"""
     pass
 
+class ConsoleLogHandler(LogHandler):
+    def handle(self, entry: LogEntry):
+        print(entry.to_dict())
+
+class FileLogHandler(LogHandler):
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        
+    def handle(self, entry: LogEntry):
+        with open(self.file_path, "a") as f:
+            f.write(f"{entry.to_dict()}\n")
 
 class CommandLineLogger:
     """Main logging class for the command line system
     
     Each method will be generated to account for each different scenario
     """
-    def __init__(self, session_id: Optional[str] = None):
+    def __init__(self, session_id: Optional[str] = None, handlers: Optional[List[LogHandler]] = None):
         self.sesion_id = session_id or str(uuid.uuid4())
         self.start_time = time.time()
+        self.handlers = handlers or [ConsoleLogHandler()]
+    
+    def add_handler(self, handler: LogHandler):
+        self.handlers.append(handler)
     
     def _log(self, event_type: EventType, level: LogLevel, message: str, metadata: Dict = None):
         entry = LogEntry(
@@ -80,10 +95,11 @@ class CommandLineLogger:
             message=message,
             metadata=metadata or {}
         )
-        try:
-            print(entry)
-        except Exception as e:
-            print(f"Logging error: {e}")
+        for handler in self.handlers:
+            try:
+                handler.handle(entry=entry)
+            except Exception as e:
+                print(f"Logging error: {e}")
     
     def log_session_start(self, agents: List, config: Dict):
         """Log the start of a chat session

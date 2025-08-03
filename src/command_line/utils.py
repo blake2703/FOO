@@ -64,6 +64,9 @@ def chat_loop(agents: list, config: dict):
     
     # Begin log
     logger = CommandLineLogger()
+    
+    # UPDATE THIS TO REFLECT WHAT VERSION THE PERSON IS USING
+    logger.add_handler(FileLogHandler('session.log'))
 
     # Show help info on start
     help_command = command_registry.commands["help"]
